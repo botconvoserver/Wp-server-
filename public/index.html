@@ -1,0 +1,733 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+  <title>WhatsApp Bulk Sender</title>
+  <link href="https://fonts.googleapis.com/css2?family=Orbitron:wght@400;700;900&family=Rajdhani:wght@300;400;600;700&display=swap" rel="stylesheet"/>
+  <script src="https://cdn.jsdelivr.net/npm/particles.js@2.0.0/particles.min.js"></script>
+  <script src="https://cdn.socket.io/4.7.2/socket.io.min.js"></script>
+  <style>
+    :root {
+      --blue: #00b4ff;
+      --blue-dark: #0066cc;
+      --blue-glow: #00cfff;
+      --pink: #ff2d9b;
+      --pink-light: #ff6cc8;
+      --pink-glow: #ff00aa;
+      --bg: #04060f;
+      --card: rgba(8, 14, 32, 0.85);
+      --border: rgba(0, 180, 255, 0.18);
+      --text: #e8f4ff;
+      --muted: rgba(180, 210, 255, 0.55);
+    }
+
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+
+    body {
+      font-family: 'Rajdhani', sans-serif;
+      background: var(--bg);
+      color: var(--text);
+      min-height: 100vh;
+      overflow-x: hidden;
+      position: relative;
+    }
+
+    #particles-js {
+      position: fixed;
+      top: 0; left: 0;
+      width: 100%; height: 100%;
+      z-index: 0;
+      pointer-events: none;
+    }
+
+    .main-wrap {
+      position: relative;
+      z-index: 10;
+      min-height: 100vh;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      padding: 30px 16px 60px;
+    }
+
+    /* ── HEADER ── */
+    .header {
+      text-align: center;
+      margin-bottom: 36px;
+    }
+
+    .header .icon {
+      font-size: 52px;
+      display: block;
+      margin-bottom: 8px;
+      filter: drop-shadow(0 0 20px var(--pink-glow));
+      animation: floatIcon 3s ease-in-out infinite;
+    }
+
+    @keyframes floatIcon {
+      0%, 100% { transform: translateY(0); }
+      50% { transform: translateY(-8px); }
+    }
+
+    .header h1 {
+      font-family: 'Orbitron', sans-serif;
+      font-size: clamp(22px, 5vw, 40px);
+      font-weight: 900;
+      background: linear-gradient(90deg, var(--blue-glow), var(--pink), var(--blue));
+      -webkit-background-clip: text;
+      -webkit-text-fill-color: transparent;
+      background-clip: text;
+      letter-spacing: 2px;
+      text-shadow: none;
+      filter: drop-shadow(0 0 25px rgba(0, 180, 255, 0.5));
+      animation: shimmer 4s linear infinite;
+      background-size: 200%;
+    }
+
+    @keyframes shimmer {
+      0% { background-position: 0% 50%; }
+      100% { background-position: 200% 50%; }
+    }
+
+    .header p {
+      color: var(--muted);
+      font-size: 15px;
+      margin-top: 6px;
+      letter-spacing: 1px;
+    }
+
+    /* ── CARD ── */
+    .card {
+      background: var(--card);
+      border: 1px solid var(--border);
+      border-radius: 20px;
+      padding: 28px 28px;
+      width: 100%;
+      max-width: 620px;
+      backdrop-filter: blur(18px);
+      -webkit-backdrop-filter: blur(18px);
+      box-shadow:
+        0 0 40px rgba(0, 180, 255, 0.08),
+        0 0 80px rgba(255, 45, 155, 0.05),
+        inset 0 1px 0 rgba(255,255,255,0.05);
+      margin-bottom: 24px;
+      transition: box-shadow 0.3s;
+      position: relative;
+      overflow: hidden;
+    }
+
+    .card::before {
+      content: '';
+      position: absolute;
+      top: 0; left: 0; right: 0;
+      height: 2px;
+      background: linear-gradient(90deg, var(--blue), var(--pink), var(--blue));
+      background-size: 200%;
+      animation: borderFlow 3s linear infinite;
+    }
+
+    @keyframes borderFlow {
+      0% { background-position: 0% 50%; }
+      100% { background-position: 200% 50%; }
+    }
+
+    .card:hover {
+      box-shadow:
+        0 0 60px rgba(0, 180, 255, 0.15),
+        0 0 100px rgba(255, 45, 155, 0.1),
+        inset 0 1px 0 rgba(255,255,255,0.07);
+    }
+
+    .card-title {
+      font-family: 'Orbitron', sans-serif;
+      font-size: 14px;
+      font-weight: 700;
+      color: var(--blue-glow);
+      letter-spacing: 3px;
+      text-transform: uppercase;
+      margin-bottom: 20px;
+      display: flex;
+      align-items: center;
+      gap: 10px;
+    }
+
+    .card-title .dot {
+      width: 8px; height: 8px;
+      border-radius: 50%;
+      background: var(--pink);
+      box-shadow: 0 0 10px var(--pink-glow);
+      animation: pulse 1.5s ease-in-out infinite;
+    }
+
+    @keyframes pulse {
+      0%, 100% { transform: scale(1); opacity: 1; }
+      50% { transform: scale(1.4); opacity: 0.7; }
+    }
+
+    /* ── FORM ── */
+    .form-group {
+      margin-bottom: 18px;
+    }
+
+    label {
+      display: block;
+      font-size: 12px;
+      font-weight: 600;
+      letter-spacing: 2px;
+      text-transform: uppercase;
+      color: var(--muted);
+      margin-bottom: 8px;
+    }
+
+    input[type="text"], input[type="number"], textarea, select {
+      width: 100%;
+      background: rgba(0, 180, 255, 0.05);
+      border: 1px solid rgba(0, 180, 255, 0.2);
+      border-radius: 10px;
+      padding: 13px 16px;
+      color: var(--text);
+      font-family: 'Rajdhani', sans-serif;
+      font-size: 15px;
+      font-weight: 600;
+      outline: none;
+      transition: all 0.3s;
+    }
+
+    input:focus, textarea:focus {
+      border-color: var(--pink);
+      box-shadow: 0 0 20px rgba(255, 45, 155, 0.15), 0 0 0 3px rgba(255, 45, 155, 0.05);
+      background: rgba(255, 45, 155, 0.05);
+    }
+
+    textarea {
+      resize: vertical;
+      min-height: 100px;
+    }
+
+    input::placeholder, textarea::placeholder {
+      color: rgba(180, 210, 255, 0.3);
+    }
+
+    /* ── BUTTONS ── */
+    .btn {
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      gap: 8px;
+      padding: 13px 28px;
+      border-radius: 10px;
+      font-family: 'Orbitron', sans-serif;
+      font-size: 12px;
+      font-weight: 700;
+      letter-spacing: 2px;
+      text-transform: uppercase;
+      cursor: pointer;
+      border: none;
+      transition: all 0.3s;
+      position: relative;
+      overflow: hidden;
+    }
+
+    .btn::after {
+      content: '';
+      position: absolute;
+      inset: 0;
+      background: rgba(255,255,255,0.1);
+      opacity: 0;
+      transition: opacity 0.2s;
+    }
+
+    .btn:active::after { opacity: 1; }
+
+    .btn-primary {
+      background: linear-gradient(135deg, var(--blue-dark), var(--blue));
+      color: white;
+      box-shadow: 0 4px 20px rgba(0, 180, 255, 0.4);
+      width: 100%;
+    }
+
+    .btn-primary:hover {
+      transform: translateY(-2px);
+      box-shadow: 0 8px 30px rgba(0, 180, 255, 0.6);
+    }
+
+    .btn-pink {
+      background: linear-gradient(135deg, #c0005a, var(--pink));
+      color: white;
+      box-shadow: 0 4px 20px rgba(255, 45, 155, 0.4);
+      width: 100%;
+    }
+
+    .btn-pink:hover {
+      transform: translateY(-2px);
+      box-shadow: 0 8px 30px rgba(255, 45, 155, 0.6);
+    }
+
+    .btn:disabled {
+      opacity: 0.4;
+      cursor: not-allowed;
+      transform: none !important;
+    }
+
+    /* ── PAIR CODE BOX ── */
+    #pairCodeBox {
+      display: none;
+      margin-top: 20px;
+      background: rgba(255, 45, 155, 0.06);
+      border: 1px solid rgba(255, 45, 155, 0.25);
+      border-radius: 14px;
+      padding: 24px;
+      text-align: center;
+    }
+
+    #pairCodeBox .code-label {
+      font-size: 11px;
+      letter-spacing: 3px;
+      color: var(--pink-light);
+      text-transform: uppercase;
+      margin-bottom: 12px;
+    }
+
+    #pairCodeDisplay {
+      font-family: 'Orbitron', sans-serif;
+      font-size: clamp(28px, 8vw, 42px);
+      font-weight: 900;
+      background: linear-gradient(90deg, var(--blue-glow), var(--pink-light));
+      -webkit-background-clip: text;
+      -webkit-text-fill-color: transparent;
+      background-clip: text;
+      letter-spacing: 6px;
+      filter: drop-shadow(0 0 15px rgba(255, 45, 155, 0.5));
+      margin-bottom: 14px;
+    }
+
+    #pairCodeBox .steps {
+      font-size: 13px;
+      color: var(--muted);
+      line-height: 1.8;
+      text-align: left;
+      background: rgba(0,0,0,0.2);
+      border-radius: 8px;
+      padding: 12px 14px;
+    }
+
+    #pairCodeBox .steps strong {
+      color: var(--blue-glow);
+    }
+
+    .btn-copy {
+      margin-top: 12px;
+      background: rgba(0, 180, 255, 0.1);
+      border: 1px solid rgba(0, 180, 255, 0.3);
+      color: var(--blue-glow);
+      padding: 8px 20px;
+      border-radius: 8px;
+      font-family: 'Rajdhani', sans-serif;
+      font-size: 13px;
+      font-weight: 700;
+      cursor: pointer;
+      letter-spacing: 1px;
+      transition: all 0.2s;
+    }
+
+    .btn-copy:hover {
+      background: rgba(0, 180, 255, 0.2);
+      box-shadow: 0 0 15px rgba(0, 180, 255, 0.3);
+    }
+
+    /* ── STATUS ── */
+    #statusBar {
+      display: none;
+      padding: 12px 16px;
+      border-radius: 10px;
+      font-size: 14px;
+      font-weight: 600;
+      margin-top: 16px;
+      letter-spacing: 0.5px;
+      border-left: 3px solid;
+    }
+
+    .status-info { background: rgba(0,180,255,0.08); border-color: var(--blue); color: var(--blue-glow); }
+    .status-success { background: rgba(0,255,128,0.08); border-color: #00ff80; color: #00ff80; }
+    .status-error { background: rgba(255,45,155,0.08); border-color: var(--pink); color: var(--pink-light); }
+
+    /* ── CONNECTION INDICATOR ── */
+    .conn-badge {
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      padding: 4px 12px;
+      border-radius: 20px;
+      font-size: 11px;
+      font-weight: 700;
+      letter-spacing: 1px;
+      text-transform: uppercase;
+      float: right;
+      margin-top: -2px;
+    }
+
+    .conn-badge.offline { background: rgba(255,45,155,0.12); color: var(--pink-light); border: 1px solid rgba(255,45,155,0.2); }
+    .conn-badge.online { background: rgba(0,255,128,0.12); color: #00ff80; border: 1px solid rgba(0,255,128,0.2); }
+
+    .conn-dot {
+      width: 6px; height: 6px;
+      border-radius: 50%;
+    }
+
+    .conn-badge.offline .conn-dot { background: var(--pink); }
+    .conn-badge.online .conn-dot { background: #00ff80; animation: pulse 1.5s infinite; }
+
+    /* ── PROGRESS ── */
+    #progressSection { display: none; }
+
+    .progress-bar-wrap {
+      background: rgba(0,180,255,0.08);
+      border-radius: 100px;
+      height: 8px;
+      margin: 10px 0;
+      overflow: hidden;
+      border: 1px solid rgba(0,180,255,0.1);
+    }
+
+    #progressFill {
+      height: 100%;
+      border-radius: 100px;
+      background: linear-gradient(90deg, var(--blue), var(--pink));
+      transition: width 0.4s ease;
+      box-shadow: 0 0 10px var(--pink-glow);
+      width: 0%;
+    }
+
+    .progress-stats {
+      display: flex;
+      gap: 12px;
+      flex-wrap: wrap;
+      margin-top: 12px;
+    }
+
+    .stat-pill {
+      padding: 6px 14px;
+      border-radius: 100px;
+      font-size: 12px;
+      font-weight: 700;
+      letter-spacing: 0.5px;
+    }
+
+    .stat-sent { background: rgba(0,255,128,0.1); color: #00ff80; border: 1px solid rgba(0,255,128,0.2); }
+    .stat-failed { background: rgba(255,45,155,0.1); color: var(--pink-light); border: 1px solid rgba(255,45,155,0.2); }
+    .stat-total { background: rgba(0,180,255,0.1); color: var(--blue-glow); border: 1px solid rgba(0,180,255,0.2); }
+
+    /* ── LOG ── */
+    #logBox {
+      background: rgba(0,0,0,0.3);
+      border: 1px solid rgba(0,180,255,0.1);
+      border-radius: 10px;
+      padding: 12px 14px;
+      max-height: 180px;
+      overflow-y: auto;
+      font-family: 'Courier New', monospace;
+      font-size: 12px;
+      margin-top: 14px;
+    }
+
+    .log-entry {
+      padding: 3px 0;
+      border-bottom: 1px solid rgba(255,255,255,0.03);
+      display: flex;
+      gap: 10px;
+    }
+
+    .log-time { color: var(--muted); min-width: 70px; }
+    .log-sent { color: #00ff80; }
+    .log-failed { color: var(--pink-light); }
+    .log-info { color: var(--blue-glow); }
+
+    /* ── SCROLLBAR ── */
+    ::-webkit-scrollbar { width: 4px; }
+    ::-webkit-scrollbar-track { background: transparent; }
+    ::-webkit-scrollbar-thumb { background: rgba(0,180,255,0.3); border-radius: 2px; }
+
+    /* ── TIPS ── */
+    .tip-box {
+      background: rgba(0,180,255,0.04);
+      border: 1px dashed rgba(0,180,255,0.15);
+      border-radius: 10px;
+      padding: 12px 14px;
+      font-size: 12px;
+      color: var(--muted);
+      line-height: 1.7;
+    }
+
+    .tip-box span { color: var(--blue-glow); font-weight: 600; }
+
+    @media (max-width: 480px) {
+      .card { padding: 20px 16px; }
+    }
+  </style>
+</head>
+<body>
+
+<!-- PARTICLES -->
+<div id="particles-js"></div>
+
+<div class="main-wrap">
+
+  <!-- HEADER -->
+  <div class="header">
+    <span class="icon">📱</span>
+    <h1>WA BULK SENDER</h1>
+    <p>WhatsApp Bulk Message Tool · Powered by Baileys</p>
+  </div>
+
+  <!-- STEP 1: CONNECT -->
+  <div class="card">
+    <div class="card-title">
+      <span class="dot"></span>
+      Step 1 — Connect WhatsApp
+      <div id="connBadge" class="conn-badge offline">
+        <span class="conn-dot"></span>
+        <span id="connText">Offline</span>
+      </div>
+    </div>
+
+    <div class="form-group">
+      <label>Your WhatsApp Number (with country code)</label>
+      <input type="text" id="phoneInput" placeholder="e.g. 919876543210" maxlength="15"/>
+    </div>
+
+    <button class="btn btn-primary" id="pairBtn" onclick="generatePairCode()">
+      ⚡ Generate Pair Code
+    </button>
+
+    <!-- PAIR CODE DISPLAY -->
+    <div id="pairCodeBox">
+      <div class="code-label">🔑 Your Pair Code</div>
+      <div id="pairCodeDisplay">----</div>
+      <button class="btn-copy" onclick="copyCode()">📋 Copy Code</button>
+      <div class="steps" style="margin-top:14px;">
+        <strong>How to connect:</strong><br>
+        1. Open WhatsApp on your phone<br>
+        2. Go to <strong>Settings → Linked Devices</strong><br>
+        3. Tap <strong>"Link a Device"</strong><br>
+        4. Choose <strong>"Link with phone number"</strong><br>
+        5. Enter the code above ☝️<br>
+        6. Wait for ✅ connection confirmation
+      </div>
+    </div>
+
+    <div id="statusBar"></div>
+  </div>
+
+  <!-- STEP 2: BULK MESSAGE -->
+  <div class="card">
+    <div class="card-title">
+      <span class="dot" style="background:var(--pink)"></span>
+      Step 2 — Send Bulk Messages
+    </div>
+
+    <div class="form-group">
+      <label>Phone Numbers (one per line, with country code)</label>
+      <textarea id="numbersInput" placeholder="919876543210&#10;918765432109&#10;917654321098&#10;..."></textarea>
+    </div>
+
+    <div class="form-group">
+      <label>Message</label>
+      <textarea id="messageInput" placeholder="Type your message here..." style="min-height:80px;"></textarea>
+    </div>
+
+    <div class="form-group">
+      <label>Delay Between Messages (milliseconds)</label>
+      <input type="number" id="delayInput" value="2000" min="500" max="30000"/>
+    </div>
+
+    <div class="tip-box" style="margin-bottom:18px;">
+      <span>💡 Tip:</span> Keep delay <span>2000ms+</span> to avoid WhatsApp ban.
+      Numbers without country code will be <span>skipped</span>.
+    </div>
+
+    <button class="btn btn-pink" id="sendBtn" onclick="sendBulk()">
+      🚀 Start Bulk Sending
+    </button>
+
+    <!-- PROGRESS -->
+    <div id="progressSection">
+      <div class="progress-bar-wrap" style="margin-top:18px;">
+        <div id="progressFill"></div>
+      </div>
+      <div id="progressText" style="text-align:center; font-size:13px; color:var(--muted); margin-top:4px;">0 / 0</div>
+      <div class="progress-stats">
+        <div class="stat-pill stat-total">Total: <span id="statTotal">0</span></div>
+        <div class="stat-pill stat-sent">Sent: <span id="statSent">0</span></div>
+        <div class="stat-pill stat-failed">Failed: <span id="statFailed">0</span></div>
+      </div>
+      <div id="logBox"></div>
+    </div>
+  </div>
+
+</div>
+
+<script>
+  // ── PARTICLES CONFIG ──────────────────────────────────────────────────────
+  particlesJS('particles-js', {
+    particles: {
+      number: { value: 120, density: { enable: true, value_area: 900 } },
+      color: { value: ['#00b4ff', '#ff2d9b', '#00cfff', '#ff6cc8', '#0066cc', '#c0005a'] },
+      shape: { type: 'circle' },
+      opacity: {
+        value: 0.55,
+        random: true,
+        anim: { enable: true, speed: 0.8, opacity_min: 0.1, sync: false }
+      },
+      size: {
+        value: 2.5,
+        random: true,
+        anim: { enable: true, speed: 1.5, size_min: 0.5, sync: false }
+      },
+      line_linked: {
+        enable: true,
+        distance: 130,
+        color: '#00b4ff',
+        opacity: 0.18,
+        width: 1,
+        color_rgb_line: {
+          enable: true,
+          value: ['#00b4ff', '#ff2d9b']
+        }
+      },
+      move: {
+        enable: true,
+        speed: 1.2,
+        direction: 'none',
+        random: true,
+        straight: false,
+        out_mode: 'out',
+        bounce: false,
+        attract: { enable: true, rotateX: 600, rotateY: 1200 }
+      }
+    },
+    interactivity: {
+      detect_on: 'canvas',
+      events: {
+        onhover: { enable: true, mode: 'grab' },
+        onclick: { enable: true, mode: 'push' },
+        resize: true
+      },
+      modes: {
+        grab: { distance: 140, line_linked: { opacity: 0.5 } },
+        push: { particles_nb: 4 }
+      }
+    },
+    retina_detect: true
+  });
+
+  // ── SOCKET.IO ─────────────────────────────────────────────────────────────
+  const socket = io();
+  let isConnected = false;
+
+  socket.on('status', data => showStatus(data.message, 'info'));
+  socket.on('error', data => showStatus(data.message, 'error'));
+  socket.on('reconnecting', data => showStatus(data.message, 'info'));
+
+  socket.on('pair_code', data => {
+    document.getElementById('pairCodeBox').style.display = 'block';
+    document.getElementById('pairCodeDisplay').textContent = data.code;
+    document.getElementById('pairBtn').disabled = false;
+    showStatus(`✅ Pair code generated! Follow steps below.`, 'info');
+  });
+
+  socket.on('connected', data => {
+    isConnected = true;
+    setConnBadge(true);
+    showStatus(`✅ Connected! WhatsApp ready to send messages.`, 'success');
+    document.getElementById('pairBtn').disabled = false;
+  });
+
+  socket.on('disconnected', data => {
+    isConnected = false;
+    setConnBadge(false);
+    showStatus(data.message, 'error');
+    document.getElementById('pairBtn').disabled = false;
+  });
+
+  socket.on('bulk_start', data => {
+    document.getElementById('progressSection').style.display = 'block';
+    document.getElementById('statTotal').textContent = data.total;
+    document.getElementById('statSent').textContent = '0';
+    document.getElementById('statFailed').textContent = '0';
+    document.getElementById('logBox').innerHTML = '';
+    document.getElementById('sendBtn').disabled = true;
+  });
+
+  socket.on('bulk_progress', data => {
+    const pct = Math.round((data.current / data.total) * 100);
+    document.getElementById('progressFill').style.width = pct + '%';
+    document.getElementById('progressText').textContent = `${data.current} / ${data.total} (${pct}%)`;
+    document.getElementById('statSent').textContent = data.sent;
+    document.getElementById('statFailed').textContent = data.failed;
+
+    const now = new Date().toLocaleTimeString('en', { hour12: false, hour: '2-digit', minute: '2-digit', second: '2-digit' });
+    const cls = data.status === 'sent' ? 'log-sent' : data.status === 'failed' ? 'log-failed' : 'log-info';
+    const icon = data.status === 'sent' ? '✓' : data.status === 'failed' ? '✗' : '⚠';
+    const logBox = document.getElementById('logBox');
+    logBox.innerHTML += `<div class="log-entry"><span class="log-time">${now}</span><span class="${cls}">${icon} ${data.number} — ${data.status}${data.error ? ': ' + data.error : ''}</span></div>`;
+    logBox.scrollTop = logBox.scrollHeight;
+  });
+
+  socket.on('bulk_done', data => {
+    document.getElementById('sendBtn').disabled = false;
+    showStatus(`🎉 Done! Sent: ${data.sent} | Failed: ${data.failed} | Total: ${data.total}`, 'success');
+  });
+
+  // ── FUNCTIONS ─────────────────────────────────────────────────────────────
+  function generatePairCode() {
+    const phone = document.getElementById('phoneInput').value.trim();
+    if (!phone) return showStatus('❌ Phone number daalo pehle!', 'error');
+    if (!/^\d{10,15}$/.test(phone)) return showStatus('❌ Valid number daalo (e.g. 919876543210)', 'error');
+
+    document.getElementById('pairBtn').disabled = true;
+    document.getElementById('pairCodeBox').style.display = 'none';
+    showStatus('⏳ Connecting to WhatsApp...', 'info');
+
+    socket.emit('generate_pair_code', { phone });
+  }
+
+  function sendBulk() {
+    if (!isConnected) return showStatus('❌ Pehle WhatsApp connect karo!', 'error');
+
+    const numbersRaw = document.getElementById('numbersInput').value.trim();
+    const message = document.getElementById('messageInput').value.trim();
+    const delay = parseInt(document.getElementById('delayInput').value) || 2000;
+
+    if (!numbersRaw) return showStatus('❌ Numbers daalo!', 'error');
+    if (!message) return showStatus('❌ Message likhho!', 'error');
+
+    const numbers = numbersRaw.split('\n').map(n => n.trim()).filter(Boolean);
+    if (numbers.length === 0) return showStatus('❌ Valid numbers nahi mile!', 'error');
+
+    socket.emit('send_bulk', { numbers, message, delay });
+  }
+
+  function copyCode() {
+    const code = document.getElementById('pairCodeDisplay').textContent;
+    navigator.clipboard.writeText(code.replace(/-/g, '')).then(() => {
+      showStatus('📋 Code copied to clipboard!', 'success');
+    });
+  }
+
+  function showStatus(msg, type) {
+    const bar = document.getElementById('statusBar');
+    bar.style.display = 'block';
+    bar.className = 'status-' + type;
+    bar.textContent = msg;
+  }
+
+  function setConnBadge(online) {
+    const badge = document.getElementById('connBadge');
+    const text = document.getElementById('connText');
+    badge.className = 'conn-badge ' + (online ? 'online' : 'offline');
+    text.textContent = online ? 'Connected' : 'Offline';
+  }
+</script>
+</body>
+</html>
