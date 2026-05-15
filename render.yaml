@@ -1,0 +1,7 @@
+services:
+  - type: web
+    name: whatsapp-bulk-sender
+    env: node
+    plan: free
+    buildCommand: npm install
+    startCommand: npm start
