@@ -1,218 +1,179 @@
-const express = require('express');
-const http = require('http');
-const { Server } = require('socket.io');
 const {
-  makeWASocket,
-  useMultiFileAuthState,
-  DisconnectReason,
-  makeCacheableSignalKeyStore,
-  fetchLatestBaileysVersion
-} = require('@whiskeysockets/baileys');
-const pino = require('pino');
-const path = require('path');
-const fs = require('fs');
+    default: makeWASocket,
+    useMultiFileAuthState,
+    delay,
+    makeCacheableSignalKeyStore,
+    PHONENUMBER_MCC
+} = require("@whiskeysockets/baileys");
+const pino = require("pino");
+const express = require("express");
+const path = require("path");
+const fs = require("fs");
 
 const app = express();
-const server = http.createServer(app);
-const io = new Server(server, {
-  cors: { origin: '*' }
-});
+const PORT = 3000;
 
 app.use(express.json());
-app.use(express.static(path.join(__dirname, 'public')));
+app.use(express.urlencoded({ extended: true }));
 
-// Store active sessions
-const sessions = {};
+// HTML Interface
+const htmlContent = `
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>WhatsApp Bulk Sender - Pair Code</title>
+    <style>
+        body { font-family: 'Segoe UI', sans-serif; background: #0e1621; color: white; display: flex; justify-content: center; align-items: center; height: 100vh; margin: 0; }
+        .container { background: #17212b; padding: 30px; border-radius: 15px; box-shadow: 0 10px 30px rgba(0,0,0,0.5); width: 400px; text-align: center; }
+        h2 { color: #4dabf7; margin-bottom: 20px; }
+        input, textarea { width: 100%; padding: 12px; margin: 10px 0; border-radius: 8px; border: none; background: #242f3d; color: white; box-sizing: border-box; }
+        button { width: 100%; padding: 12px; border-radius: 8px; border: none; background: #4dabf7; color: white; font-weight: bold; cursor: pointer; transition: 0.3s; }
+        button:hover { background: #339af0; }
+        #pairCodeDisplay { margin-top: 20px; font-size: 24px; font-weight: bold; color: #ff922b; letter-spacing: 5px; background: #242f3d; padding: 10px; border-radius: 5px; display: none; }
+        #status { margin-top: 15px; font-size: 14px; color: #adb5bd; }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h2>WhatsApp Automation</h2>
+        <div id="step1">
+            <input type="text" id="phoneNumber" placeholder="Phone Number (with country code, e.g. 919876543210)">
+            <button onclick="generatePairCode()">Generate Pairing Code</button>
+        </div>
+        <div id="pairCodeDisplay"></div>
+        
+        <div id="bulkSection" style="display:none; margin-top:20px;">
+            <textarea id="numbers" placeholder="Enter numbers separated by comma"></textarea>
+            <textarea id="message" placeholder="Your message here..."></textarea>
+            <input type="number" id="delay" placeholder="Delay in seconds" value="5">
+            <button onclick="sendBulk()">Start Sending</button>
+        </div>
+        <div id="status">Ready...</div>
+    </div>
 
-// ─── AUTH FOLDER ───────────────────────────────────────────────────────────
-const AUTH_FOLDER = path.join(__dirname, 'auth_info');
-if (!fs.existsSync(AUTH_FOLDER)) fs.mkdirSync(AUTH_FOLDER, { recursive: true });
+    <script>
+        async function generatePairCode() {
+            const num = document.getElementById('phoneNumber').value;
+            const status = document.getElementById('status');
+            if(!num) return alert("Number daalo pehle!");
+            
+            status.innerText = "Generating code... Please wait";
+            const res = await fetch('/get-code', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ number: num })
+            });
+            const data = await res.json();
+            
+            if(data.code) {
+                const display = document.getElementById('pairCodeDisplay');
+                display.innerText = data.code;
+                display.style.display = 'block';
+                status.innerText = "Notification sent to your phone. Enter this code!";
+                checkConnection();
+            } else {
+                status.innerText = "Error generating code.";
+            }
+        }
 
-// ─── PAIR CODE CONNECTION ───────────────────────────────────────────────────
-async function connectWithPairCode(phoneNumber, socketId) {
-  const socket = io.to(socketId);
+        async function checkConnection() {
+            const interval = setInterval(async () => {
+                const res = await fetch('/status');
+                const data = await res.json();
+                if(data.connected) {
+                    document.getElementById('step1').style.display = 'none';
+                    document.getElementById('pairCodeDisplay').style.display = 'none';
+                    document.getElementById('bulkSection').style.display = 'block';
+                    document.getElementById('status').innerText = "Connected Successfully!";
+                    clearInterval(interval);
+                }
+            }, 5000);
+        }
 
-  try {
-    // Clean old auth for fresh pair
-    const authPath = path.join(AUTH_FOLDER, phoneNumber);
-    if (fs.existsSync(authPath)) {
-      fs.rmSync(authPath, { recursive: true, force: true });
-    }
-    fs.mkdirSync(authPath, { recursive: true });
+        async function sendBulk() {
+            const numbers = document.getElementById('numbers').value.split(',');
+            const message = document.getElementById('message').value;
+            const delayTime = document.getElementById('delay').value;
+            
+            document.getElementById('status').innerText = "Sending started...";
+            const res = await fetch('/send-bulk', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ numbers, message, delay: delayTime })
+            });
+            const data = await res.json();
+            alert(data.status);
+        }
+    </script>
+</body>
+</html>
+`;
 
-    const { state, saveCreds } = await useMultiFileAuthState(authPath);
-    const { version } = await fetchLatestBaileysVersion();
+let sock;
+let isConnected = false;
 
-    const sock = makeWASocket({
-      version,
-      logger: pino({ level: 'silent' }),
-      printQRInTerminal: false,
-      auth: {
-        creds: state.creds,
-        keys: makeCacheableSignalKeyStore(state.keys, pino({ level: 'silent' }))
-      },
-      browser: ['Chrome (Linux)', 'Chrome', '117.0.0.0'],
-      connectTimeoutMs: 60000,
-      defaultQueryTimeoutMs: 60000,
-      keepAliveIntervalMs: 10000,
-      emitOwnEvents: false,
-      shouldIgnoreJid: () => false,
-      markOnlineOnConnect: true,
+// WhatsApp Connection Logic
+async function startWhatsApp(num, res) {
+    const { state, saveCreds } = await useMultiFileAuthState('auth_info');
+    
+    sock = makeWASocket({
+        auth: {
+            creds: state.creds,
+            keys: makeCacheableSignalKeyStore(state.keys, pino({ level: 'fatal' })),
+        },
+        printQRInTerminal: false,
+        logger: pino({ level: 'fatal' }),
+        browser: ["Ubuntu", "Chrome", "20.0.04"]
     });
 
-    sessions[socketId] = { sock, phone: phoneNumber, connected: false };
+    if (!sock.authState.creds.registered) {
+        setTimeout(async () => {
+            let code = await sock.requestPairingCode(num);
+            res.json({ code: code });
+        }, 3000);
+    }
 
-    // ── Generate Pair Code ──────────────────────────────────────────────────
-    sock.ev.on('connection.update', async (update) => {
-      const { connection, lastDisconnect, isNewLogin } = update;
-
-      // Generate pair code once registered
-      if (!sock.authState.creds.registered) {
-        try {
-          await new Promise(r => setTimeout(r, 2000)); // wait for socket to stabilize
-          const cleanPhone = phoneNumber.replace(/[^0-9]/g, '');
-          const code = await sock.requestPairingCode(cleanPhone);
-          const formatted = code.match(/.{1,4}/g).join('-');
-
-          socket.emit('pair_code', {
-            code: formatted,
-            phone: cleanPhone,
-            message: `Pair code generated! Enter this in WhatsApp → Linked Devices → Link with phone number`
-          });
-
-          console.log(`[PAIR CODE] ${cleanPhone}: ${formatted}`);
-        } catch (err) {
-          console.error('Pair code error:', err.message);
-          socket.emit('error', { message: 'Pair code generate nahi hua: ' + err.message });
+    sock.ev.on('connection.update', (update) => {
+        const { connection } = update;
+        if (connection === 'open') {
+            isConnected = true;
+            console.log("WhatsApp Connected!");
         }
-      }
-
-      if (connection === 'open') {
-        sessions[socketId].connected = true;
-        await saveCreds();
-        const userJid = sock.user?.id || 'Unknown';
-        socket.emit('connected', {
-          message: '✅ WhatsApp Connected Successfully!',
-          phone: userJid.split(':')[0]
-        });
-        console.log(`[CONNECTED] ${phoneNumber} connected!`);
-      }
-
-      if (connection === 'close') {
-        const statusCode = lastDisconnect?.error?.output?.statusCode;
-        const shouldReconnect = statusCode !== DisconnectReason.loggedOut;
-
-        if (shouldReconnect && sessions[socketId]?.connected) {
-          socket.emit('reconnecting', { message: '🔄 Reconnecting...' });
-          setTimeout(() => connectWithPairCode(phoneNumber, socketId), 3000);
-        } else {
-          delete sessions[socketId];
-          socket.emit('disconnected', { message: '❌ Disconnected. Please reconnect.' });
+        if (connection === 'close') {
+            isConnected = false;
+            // Auto reconnect logic could go here
         }
-      }
     });
 
     sock.ev.on('creds.update', saveCreds);
-
-  } catch (err) {
-    console.error('Connection error:', err);
-    socket.emit('error', { message: 'Connection failed: ' + err.message });
-  }
 }
 
-// ─── SOCKET.IO EVENTS ──────────────────────────────────────────────────────
-io.on('connection', (socket) => {
-  console.log('[SOCKET] Client connected:', socket.id);
+// Routes
+app.get('/', (req, res) => res.send(htmlContent));
 
-  socket.on('generate_pair_code', async (data) => {
-    const { phone } = data;
-    if (!phone) return socket.emit('error', { message: 'Phone number required!' });
-
-    const cleanPhone = phone.replace(/[^0-9]/g, '');
-    if (cleanPhone.length < 10) return socket.emit('error', { message: 'Invalid phone number!' });
-
-    socket.emit('status', { message: '⏳ Connecting to WhatsApp...' });
-    await connectWithPairCode(cleanPhone, socket.id);
-  });
-
-  socket.on('send_bulk', async (data) => {
-    const { numbers, message, delay } = data;
-    const session = sessions[socket.id];
-
-    if (!session || !session.connected) {
-      return socket.emit('error', { message: 'WhatsApp not connected! Generate pair code first.' });
-    }
-
-    if (!numbers || numbers.length === 0) {
-      return socket.emit('error', { message: 'No numbers provided!' });
-    }
-
-    const delayMs = parseInt(delay) || 2000;
-    let sent = 0, failed = 0;
-
-    socket.emit('bulk_start', { total: numbers.length });
-
-    for (let i = 0; i < numbers.length; i++) {
-      const num = numbers[i].toString().replace(/[^0-9]/g, '');
-      if (!num || num.length < 10) {
-        failed++;
-        socket.emit('bulk_progress', {
-          current: i + 1,
-          total: numbers.length,
-          sent,
-          failed,
-          number: num,
-          status: 'invalid'
-        });
-        continue;
-      }
-
-      try {
-        const jid = `${num}@s.whatsapp.net`;
-        await session.sock.sendMessage(jid, { text: message });
-        sent++;
-        socket.emit('bulk_progress', {
-          current: i + 1,
-          total: numbers.length,
-          sent,
-          failed,
-          number: num,
-          status: 'sent'
-        });
-        console.log(`[SENT] → ${num}`);
-      } catch (err) {
-        failed++;
-        socket.emit('bulk_progress', {
-          current: i + 1,
-          total: numbers.length,
-          sent,
-          failed,
-          number: num,
-          status: 'failed',
-          error: err.message
-        });
-        console.error(`[FAILED] → ${num}:`, err.message);
-      }
-
-      if (i < numbers.length - 1) {
-        await new Promise(r => setTimeout(r, delayMs));
-      }
-    }
-
-    socket.emit('bulk_done', { sent, failed, total: numbers.length });
-  });
-
-  socket.on('disconnect', () => {
-    console.log('[SOCKET] Client disconnected:', socket.id);
-    if (sessions[socket.id]) {
-      try { sessions[socket.id].sock.end(); } catch (e) {}
-      delete sessions[socket.id];
-    }
-  });
+app.post('/get-code', async (req, res) => {
+    let num = req.body.number.replace(/[^0-9]/g, '');
+    await startWhatsApp(num, res);
 });
 
-// ─── START SERVER ──────────────────────────────────────────────────────────
-const PORT = 3000;
-server.listen(PORT, () => {
-  console.log(`\n🚀 WhatsApp Bulk Sender running at http://localhost:${PORT}\n`);
+app.get('/status', (req, res) => {
+    res.json({ connected: isConnected });
+});
+
+app.post('/send-bulk', async (req, res) => {
+    const { numbers, message, delay: delayTime } = req.body;
+    
+    for (let num of numbers) {
+        let jid = num.trim() + "@s.whatsapp.net";
+        await sock.sendMessage(jid, { text: message });
+        console.log(`Sent to ${num}`);
+        await delay(delayTime * 1000);
+    }
+    res.json({ status: "All messages sent successfully with delay!" });
+});
+
+app.listen(PORT, () => {
+    console.log(`Server running on http://localhost:${PORT}`);
 });
